@@ -1,0 +1,24 @@
+{
+  "name": "crypto-tracker-bot",
+  "version": "1.0.0",
+  "description": "Telegram button bot for real-time crypto market data, top coins, and news using Binance API and Node.js.",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "keywords": [
+    "telegram",
+    "bot",
+    "crypto",
+    "binance",
+    "nodejs"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "axios": "^1.7.0",
+    "dotenv": "^16.4.5",
+    "node-telegram-bot-api": "^0.66.0",
+    "ws": "^8.19.0"
+  }
+}
