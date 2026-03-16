@@ -10,195 +10,240 @@ if (!botToken) {
 }
 
 const bot = new TelegramBot(botToken, { polling: true });
-const COINBASE_BASE_URL = 'https://api.coinbase.com/v2';
 
-// Helper: fetch price from Coinbase
+// Axios instance with timeout
+const apiClient = axios.create({ timeout: 10000 });
+
+// ==================== PRICE FETCHERS ====================
+
+// Fetch single coin price from Coinbase
 async function getPrice(symbol = 'BTC-USD') {
   try {
-    const { data } = await axios.get(`${COINBASE_BASE_URL}/prices/${symbol}/spot`);
+    const { data } = await apiClient.get(
+      `https://api.coinbase.com/v2/prices/${symbol}/spot`
+    );
     return {
       symbol: symbol,
-      price: data.data.amount,
+      price: parseFloat(data.data.amount),
     };
   } catch (err) {
-    console.error(`Error fetching price for ${symbol}:`, err.message);
-    throw err;
+    console.error(`Error fetching ${symbol}:`, err.message);
+    throw new Error(`Failed to fetch ${symbol} price`);
   }
 }
 
-// Helper: fetch top coins by market cap (using CoinGecko free API)
+// Fetch top coins by market cap (CoinGecko)
 async function getTopCoins(limit = 5) {
   try {
-    const { data } = await axios.get('https://api.coingecko.com/api/v3/markets', {
-      params: {
-        vs_currency: 'usd',
-        order: 'market_cap_desc',
-        per_page: limit,
-        sparkline: false,
-      },
-    });
+    const { data } = await apiClient.get(
+      'https://api.coingecko.com/api/v3/markets',
+      {
+        params: {
+          vs_currency: 'usd',
+          order: 'market_cap_desc',
+          per_page: limit,
+          sparkline: false,
+        },
+      }
+    );
     return data.map((coin) => ({
       symbol: coin.symbol.toUpperCase(),
       name: coin.name,
-      lastPrice: coin.current_price,
-      priceChangePercent: coin.price_change_percentage_24h || 0,
+      price: parseFloat(coin.current_price),
+      change24h: coin.price_change_percentage_24h || 0,
       marketCap: coin.market_cap,
     }));
   } catch (err) {
     console.error('Error fetching top coins:', err.message);
-    throw err;
+    throw new Error('Failed to fetch market data');
   }
 }
 
-// (Optional) simple crypto news using CryptoCompare News API as an example
-async function getCryptoNews(limit = 5) {
-  const apiKey = process.env.CRYPTO_NEWS_API_KEY;
-  if (!apiKey) return null;
+// ==================== TELEGRAM HANDLERS ====================
 
-  const { data } = await axios.get('https://min-api.cryptocompare.com/data/v2/news/', {
-    params: { lang: 'EN' },
-    headers: { authorization: `Apikey ${apiKey}` },
-  });
-
-  return data.Data.slice(0, limit).map((n) => ({
-    title: n.title,
-    url: n.url,
-    source: n.source_info?.name,
-  }));
-}
-
-// Start command with main menu using reply keyboard
+// Start command - shows main menu
 bot.onText(/\/start/, (msg) => {
   const chatId = msg.chat.id;
-
-  const options = {
-    reply_markup: {
-      keyboard: [
-        ['📊 Live Prices', '🔥 Top 10 Coins'],
-        ['📈 BTC Analysis', '📄 ETH Analysis'],
-        ['🔔 Set Alert', '⚠️ My Alerts'],
-        ['📰 Market Overview', '❓ Help'],
-      ],
-      resize_keyboard: true,
-      one_time_keyboard: false,
-    },
-  };
+  const keyboard = [
+    ['📊 Live Prices', '🔥 Top 10 Coins'],
+    ['💰 BTC Analysis', '💎 ETH Analysis'],
+    ['📰 Market Overview', '❓ Help'],
+    ['🚀 More Features (Coming)'],
+  ];
 
   bot.sendMessage(
     chatId,
-    'Welcome to Crypto Tracker Bot!\nChoose an option below:',
-    options
+    '🤖 *Crypto Tracker Bot*\n\nChoose an option:',
+    {
+      parse_mode: 'Markdown',
+      reply_markup: {
+        keyboard,
+        resize_keyboard: true,
+        one_time_keyboard: false,
+      },
+    }
   );
 });
 
-// Handle reply keyboard button presses by message text
+// Handle all messages
 bot.on('message', async (msg) => {
   const chatId = msg.chat.id;
-  const text = msg.text;
+  const text = msg.text?.trim();
 
-  // Ignore pure commands here; /start is handled above
+  // Skip commands (handled by onText)
   if (!text || text.startsWith('/')) {
     return;
   }
 
   try {
     if (text === '📊 Live Prices') {
-      const [btc, eth] = await Promise.all([getPrice('BTC-USD'), getPrice('ETH-USD')]);
-      await bot.sendMessage(
-        chatId,
-        [
-          '📊 *Live Prices*',
-          `BTC/USD: *$${parseFloat(btc.price).toFixed(2)}*`,
-          `ETH/USD: *$${parseFloat(eth.price).toFixed(2)}*`,
-        ].join('\n'),
-        { parse_mode: 'Markdown' }
-      );
+      await handleLivePrices(chatId);
     } else if (text === '🔥 Top 10 Coins') {
-      const topCoins = await getTopCoins(10);
-      const reply = topCoins
-        .map((c, i) =>
-          `${i + 1}. *${c.symbol}* (${c.name})\nPrice: $${parseFloat(c.lastPrice).toFixed(
-            2
-          )} | 24h: ${parseFloat(c.priceChangePercent).toFixed(2)}%`
-        )
-        .join('\n\n');
-
-      await bot.sendMessage(chatId, `🔥 *Top 10 Coins by Market Cap*\n\n${reply}`, {
-        parse_mode: 'Markdown',
-      });
-    } else if (text === '📈 BTC Analysis') {
-      const btc = await getPrice('BTC-USD');
-      await bot.sendMessage(
-        chatId,
-        `📈 *BTC Analysis*\nBTC/USD: *$${parseFloat(btc.price).toFixed(2)}*`,
-        { parse_mode: 'Markdown' }
-      );
-      // Send a BTC image from a public crypto logo CDN
-      await bot.sendPhoto(chatId, 'https://assets.coingecko.com/coins/images/1/large/bitcoin.png', {
-        caption: '🖼 BTC logo from CoinGecko',
-      });
-    } else if (text === '📄 ETH Analysis') {
-      const eth = await getPrice('ETH-USD');
-      await bot.sendMessage(
-        chatId,
-        `📄 *ETH Analysis*\nETH/USD: *$${parseFloat(eth.price).toFixed(2)}*`,
-        { parse_mode: 'Markdown' }
-      );
-      // Send an ETH image from a public crypto logo CDN
-      await bot.sendPhoto(chatId, 'https://assets.coingecko.com/coins/images/279/large/ethereum.png', {
-        caption: '🖼 ETH logo from CoinGecko',
-      });
-    } else if (text === '🔔 Set Alert') {
-      await bot.sendMessage(
-        chatId,
-        '🔔 Alert setup will be added soon (placeholder).'
-      );
-    } else if (text === '⚠️ My Alerts') {
-      await bot.sendMessage(
-        chatId,
-        '⚠️ No alerts stored yet (placeholder).'
-      );
+      await handleTopCoins(chatId);
+    } else if (text === '💰 BTC Analysis') {
+      await handleBTCAnalysis(chatId);
+    } else if (text === '💎 ETH Analysis') {
+      await handleETHAnalysis(chatId);
     } else if (text === '📰 Market Overview') {
-      const topCoins = await getTopCoins(5);
-      const reply = topCoins
-        .map(
-          (c) =>
-            `*${c.symbol}* (${c.name})  Price: $${parseFloat(c.lastPrice).toFixed(
-              2
-            )}  | 24h: ${parseFloat(c.priceChangePercent).toFixed(2)}%`
-        )
-        .join('\n');
-
-      await bot.sendMessage(chatId, `📰 *Market Overview (Top 5)*\n\n${reply}`, {
-        parse_mode: 'Markdown',
-      });
-      // Example generic market image (can be replaced with a Binance/other chart URL you like)
-      await bot.sendPhoto(
-        chatId,
-        'https://static.coingecko.com/s/featured_coins/featured_coins_background-14a2fdbef674e7dc86d51a0d65704fbf9f6b2d98b5eb2d6468d4bcee66216c0e.png',
-        {
-          caption: '🖼 Market overview image',
-        }
-      );
+      await handleMarketOverview(chatId);
     } else if (text === '❓ Help') {
-      await bot.sendMessage(
-        chatId,
-        [
-          '❓ *Help*',
-          '',
-          '• 📊 *Live Prices*: Quick BTC & ETH prices.',
-          '• 🔥 *Top 10 Coins*: Top 10 USDT pairs by volume.',
-          '• 📈 *BTC Analysis* / 📄 *ETH Analysis*: Basic price snapshot.',
-          '• 🔔 *Set Alert* / ⚠️ *My Alerts*: Alerts (coming soon).',
-          '• 📰 *Market Overview*: Short overview of top coins.',
-        ].join('\n'),
-        { parse_mode: 'Markdown' }
-      );
+      await handleHelp(chatId);
+    } else if (text === '🚀 More Features (Coming)') {
+      await bot.sendMessage(chatId, '🚀 Features coming soon:\n• Price Alerts\n• Portfolio Tracking\n• Market News');
     }
   } catch (err) {
-    console.error(err);
-    await bot.sendMessage(chatId, '⚠️ Something went wrong while fetching data.');
+    console.error('Handler error:', err);
+    await bot.sendMessage(
+      chatId,
+      '❌ Error fetching data. Please try again.'
+    );
   }
 });
 
-console.log('Crypto Tracker Bot is running…');
+// ==================== HANDLER FUNCTIONS ====================
+
+async function handleLivePrices(chatId) {
+  const [btc, eth] = await Promise.all([
+    getPrice('BTC-USD'),
+    getPrice('ETH-USD'),
+  ]);
+
+  const message = [
+    '📊 *Live Prices*',
+    '',
+    `🪙 *Bitcoin (BTC)*\n💵 $${btc.price.toLocaleString('en-US', { maximumFractionDigits: 2 })}`,
+    '',
+    `🪙 *Ethereum (ETH)*\n💵 $${eth.price.toLocaleString('en-US', { maximumFractionDigits: 2 })}`,
+  ].join('\n');
+
+  await bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
+}
+
+async function handleTopCoins(chatId) {
+  const topCoins = await getTopCoins(10);
+
+  const reply = topCoins
+    .map(
+      (c, i) =>
+        `${i + 1}. *${c.name}* (${c.symbol})\n` +
+        `💵 $${c.price.toLocaleString('en-US', { maximumFractionDigits: 2 })} | ` +
+        `24h: ${c.change24h > 0 ? '📈' : '📉'} ${Math.abs(c.change24h).toFixed(2)}%`
+    )
+    .join('\n\n');
+
+  await bot.sendMessage(chatId, `🔥 *Top 10 by Market Cap*\n\n${reply}`, {
+    parse_mode: 'Markdown',
+  });
+}
+
+async function handleBTCAnalysis(chatId) {
+  const btc = await getPrice('BTC-USD');
+
+  await bot.sendMessage(
+    chatId,
+    `💰 *Bitcoin Analysis*\n\n` +
+    `Current Price: *$${btc.price.toLocaleString('en-US', { maximumFractionDigits: 2 })}*\n\n` +
+    `_Real-time data from Coinbase_`,
+    { parse_mode: 'Markdown' }
+  );
+
+  await bot.sendPhoto(
+    chatId,
+    'https://assets.coingecko.com/coins/images/1/large/bitcoin.png',
+    { caption: '🪙 Bitcoin Logo' }
+  );
+}
+
+async function handleETHAnalysis(chatId) {
+  const eth = await getPrice('ETH-USD');
+
+  await bot.sendMessage(
+    chatId,
+    `💎 *Ethereum Analysis*\n\n` +
+    `Current Price: *$${eth.price.toLocaleString('en-US', { maximumFractionDigits: 2 })}*\n\n` +
+    `_Real-time data from Coinbase_`,
+    { parse_mode: 'Markdown' }
+  );
+
+  await bot.sendPhoto(
+    chatId,
+    'https://assets.coingecko.com/coins/images/279/large/ethereum.png',
+    { caption: '💎 Ethereum Logo' }
+  );
+}
+
+async function handleMarketOverview(chatId) {
+  const topCoins = await getTopCoins(5);
+
+  const reply = topCoins
+    .map(
+      (c) =>
+        `*${c.symbol}* - ${c.name}\n` +
+        `💵 $${c.price.toLocaleString('en-US', { maximumFractionDigits: 2 })} | ` +
+        `${c.change24h > 0 ? '📈' : '📉'} ${c.change24h.toFixed(2)}%`
+    )
+    .join('\n\n');
+
+  await bot.sendMessage(
+    chatId,
+    `📰 *Market Overview (Top 5)*\n\n${reply}`,
+    { parse_mode: 'Markdown' }
+  );
+}
+
+async function handleHelp(chatId) {
+  const helpText = `
+❓ *Help & Features*
+
+📊 *Live Prices* - BTC & ETH current prices (Coinbase)
+🔥 *Top 10 Coins* - Top 10 cryptocurrencies by market cap
+💰 *BTC Analysis* - Detailed Bitcoin price data
+💎 *ETH Analysis* - Detailed Ethereum price data
+📰 *Market Overview* - Quick look at top 5 coins
+
+*Data Sources:*
+• Coinbase API (Real-time prices)
+• CoinGecko API (Market data)
+
+_No API keys needed - completely free!_
+  `;
+
+  await bot.sendMessage(chatId, helpText, { parse_mode: 'Markdown' });
+}
+
+// ==================== ERROR HANDLERS ====================
+
+bot.on('polling_error', (err) => {
+  console.error('Polling error:', err);
+});
+
+bot.on('error', (err) => {
+  console.error('Bot error:', err);
+});
+
+// ==================== STARTUP ====================
+
+console.log('🤖 Crypto Tracker Bot started!');
+console.log('✅ Using Coinbase API (no geographic restrictions)');
+console.log('✅ Using CoinGecko API for market data');
+console.log('🚀 Ready to receive messages...\n');
