@@ -339,7 +339,7 @@ async function handleLivePrices(chatId) {
     '',
     `🪙 *Ethereum (ETH)*\n💵 $${eth.price.toLocaleString('en-US', { maximumFractionDigits: 2 })}`,
     '',
-    `_Real-time from Coinbase_`,
+    `_📊 Real-time data from Coinbase_`,
   ].join('\n');
 
   await bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
@@ -357,7 +357,7 @@ async function handleTrending(chatId) {
     )
     .join('\n\n');
 
-  await bot.sendMessage(chatId, `🔥 *Top 10 Trending Now 🚀*\n\n${reply}`, {
+  await bot.sendMessage(chatId, `🔥 *Top 10 Trending Now 🚀*\n\n${reply}\n\n_📊 Data from CoinGecko_`, {
     parse_mode: 'Markdown',
   });
 }
@@ -367,16 +367,11 @@ async function handleBTCAnalysis(chatId) {
 
   await bot.sendMessage(
     chatId,
-    `💰 *Bitcoin Deep Dive*\n\n` +
+    `💰 *Bitcoin Analysis*\n\n` +
     `Current Price: *$${btc.price.toLocaleString('en-US', { maximumFractionDigits: 2 })}*\n\n` +
-    `_The leading cryptocurrency by market cap._`,
+    `_The leading cryptocurrency by market cap._\n` +
+    `📊 _Data from Coinbase_`,
     { parse_mode: 'Markdown' }
-  );
-
-  await bot.sendPhoto(
-    chatId,
-    'https://assets.coingecko.com/coins/images/1/large/bitcoin.png',
-    { caption: '🪙 Bitcoin' }
   );
 }
 
@@ -385,16 +380,11 @@ async function handleETHAnalysis(chatId) {
 
   await bot.sendMessage(
     chatId,
-    `💎 *Ethereum Deep Dive*\n\n` +
+    `💎 *Ethereum Analysis*\n\n` +
     `Current Price: *$${eth.price.toLocaleString('en-US', { maximumFractionDigits: 2 })}*\n\n` +
-    `_The leading smart contract platform._`,
+    `_The leading smart contract platform._\n` +
+    `📊 _Data from Coinbase_`,
     { parse_mode: 'Markdown' }
-  );
-
-  await bot.sendPhoto(
-    chatId,
-    'https://assets.coingecko.com/coins/images/279/large/ethereum.png',
-    { caption: '💎 Ethereum' }
   );
 }
 
@@ -410,7 +400,7 @@ async function handleTopCoins(chatId) {
     )
     .join('\n\n');
 
-  await bot.sendMessage(chatId, `📈 *Top 10 by Market Cap*\n\n${reply}`, {
+  await bot.sendMessage(chatId, `📈 *Top 10 by Market Cap*\n\n${reply}\n\n_📊 Data from CoinGecko_`, {
     parse_mode: 'Markdown',
   });
 }
@@ -426,6 +416,8 @@ async function handleGlobalData(chatId) {
     '',
     `Bitcoin Dominance: *${global.btcDominance.toFixed(2)}%*`,
     `Ethereum Dominance: *${global.ethDominance.toFixed(2)}%*`,
+    '',
+    `_📊 Data from CoinGecko_`,
   ].join('\n');
 
   await bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
@@ -471,6 +463,8 @@ async function handlePriceChart(chatId, coinName) {
     `📊 High: *$${history.high.toFixed(2)}*`,
     `📊 Low: *$${history.low.toFixed(2)}*`,
     `📊 Current: *$${history.current.toFixed(2)}*`,
+    '',
+    `_📊 Data from CoinGecko_`,
   ].join('\n');
 
   await bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
