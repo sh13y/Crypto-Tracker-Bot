@@ -270,6 +270,42 @@ bot.on('message', async (msg) => {
       chartMode.add(chatId);
     } else if (text === '❓ Help') {
       await handleHelp(chatId);
+    } else if (text === '🏠 Main Menu' || text === '🚀 Main Menu') {
+      // Return to main menu
+      categoryMode.delete(chatId);
+      searchMode.delete(chatId);
+      chartMode.delete(chatId);
+      const keyboard = [
+        ['📊 Live Prices', '🔥 Trending'],
+        ['💰 BTC', '💎 ETH'],
+        ['📈 Top 10', '🌍 Global'],
+        ['🔍 Search Coin', '📚 Categories'],
+        ['📉 7-Day Chart', '❓ Help'],
+      ];
+      await bot.sendMessage(
+        chatId,
+        '🤖 *Main Menu*\n\nChoose an option:',
+        {
+          parse_mode: 'Markdown',
+          reply_markup: {
+            keyboard,
+            resize_keyboard: true,
+            one_time_keyboard: false,
+          },
+        }
+      );
+    } else if (text === '📚 Back to Categories') {
+      await handleCategories(chatId);
+    } else if (text === 'Back' && categoryMode.has(chatId)) {
+      // Back button from category view
+      await handleCategories(chatId);
+    } else if (categoryMode.has(chatId)) {
+      // User selected a category
+      const categories = categoryMode.get(chatId);
+      const selectedCategory = categories.find((c) => c.name.substring(0, 20) === text);
+      if (selectedCategory) {
+        await handleCategoryCoins(chatId, selectedCategory.id, selectedCategory.name);
+      }
     } else if (searchMode.has(chatId)) {
       await handleSearchCoin(chatId, text);
       searchMode.delete(chatId);
@@ -286,6 +322,7 @@ bot.on('message', async (msg) => {
 // Track search and chart modes
 const searchMode = new Set();
 const chartMode = new Set();
+const categoryMode = new Map(); // Maps chatId to categories array
 
 // ==================== HANDLER FUNCTIONS ====================
 
@@ -444,17 +481,22 @@ async function handleCategories(chatId) {
 
   const keyboard = categories
     .slice(0, 8)
-    .map((c) => [c.name.substring(0, 20)])
-    .concat([['Back']]);
+    .map((c) => [c.name.substring(0, 20)]);
+  
+  // Add back button
+  keyboard.push(['Back']);
 
   const message = categories
     .slice(0, 8)
-    .map((c) => `*${c.name}*\nMarket Cap: $${(c.marketCap / 1e9).toFixed(2)}B`)
+    .map((c) => `*${c.name}*\n💰 Market Cap: $${(c.marketCap / 1e9).toFixed(2)}B`)
     .join('\n\n');
+
+  // Store categories for this chat
+  categoryMode.set(chatId, categories.slice(0, 8));
 
   await bot.sendMessage(
     chatId,
-    `📚 *Top Coin Categories*\n\n${message}\n\nChoose a category:`,
+    `📚 *Top Coin Categories*\n\n${message}\n\n👇 Choose a category:`,
     {
       parse_mode: 'Markdown',
       reply_markup: {
@@ -463,6 +505,48 @@ async function handleCategories(chatId) {
       },
     }
   );
+}
+
+async function handleCategoryCoins(chatId, categoryId, categoryName) {
+  try {
+    const coins = await getCoinsByCategory(categoryId, 10);
+
+    if (coins.length === 0) {
+      await bot.sendMessage(chatId, `❌ No coins found in ${categoryName} category.`);
+      return;
+    }
+
+    const reply = coins
+      .map(
+        (c, i) =>
+          `${i + 1}. *${c.name}* (${c.symbol})\n` +
+          `💵 $${c.price.toLocaleString('en-US', { maximumFractionDigits: 2 })} | ` +
+          `24h: ${c.change24h > 0 ? '📈' : '📉'} ${Math.abs(c.change24h).toFixed(2)}%`
+      )
+      .join('\n\n');
+
+    await bot.sendMessage(
+      chatId,
+      `📚 *${categoryName}*\n\n${reply}`,
+      { parse_mode: 'Markdown' }
+    );
+
+    // Return to categories menu
+    const keyboard = [['📚 Back to Categories'], ['🏠 Main Menu']];
+    await bot.sendMessage(
+      chatId,
+      'What next?',
+      {
+        reply_markup: {
+          keyboard,
+          resize_keyboard: true,
+        },
+      }
+    );
+  } catch (err) {
+    console.error('Error in handleCategoryCoins:', err);
+    await bot.sendMessage(chatId, '❌ Failed to fetch coins for this category.');
+  }
 }
 
 async function handleHelp(chatId) {
