@@ -10,22 +10,44 @@ if (!botToken) {
 }
 
 const bot = new TelegramBot(botToken, { polling: true });
-const BINANCE_BASE_URL = process.env.BINANCE_BASE_URL || 'https://api.binance.com';
+const COINBASE_BASE_URL = 'https://api.coinbase.com/v2';
 
-// Helper: fetch price from Binance
-async function getPrice(symbol = 'BTCUSDT') {
-  const { data } = await axios.get(`${BINANCE_BASE_URL}/api/v3/ticker/price`, {
-    params: { symbol },
-  });
-  return data;
+// Helper: fetch price from Coinbase
+async function getPrice(symbol = 'BTC-USD') {
+  try {
+    const { data } = await axios.get(`${COINBASE_BASE_URL}/prices/${symbol}/spot`);
+    return {
+      symbol: symbol,
+      price: data.data.amount,
+    };
+  } catch (err) {
+    console.error(`Error fetching price for ${symbol}:`, err.message);
+    throw err;
+  }
 }
 
-// Helper: fetch top coins by 24h volume (simple example)
+// Helper: fetch top coins by market cap (using CoinGecko free API)
 async function getTopCoins(limit = 5) {
-  const { data } = await axios.get(`${BINANCE_BASE_URL}/api/v3/ticker/24hr`);
-  const usdtMarkets = data.filter((t) => t.symbol.endsWith('USDT'));
-  usdtMarkets.sort((a, b) => parseFloat(b.quoteVolume) - parseFloat(a.quoteVolume));
-  return usdtMarkets.slice(0, limit);
+  try {
+    const { data } = await axios.get('https://api.coingecko.com/api/v3/markets', {
+      params: {
+        vs_currency: 'usd',
+        order: 'market_cap_desc',
+        per_page: limit,
+        sparkline: false,
+      },
+    });
+    return data.map((coin) => ({
+      symbol: coin.symbol.toUpperCase(),
+      name: coin.name,
+      lastPrice: coin.current_price,
+      priceChangePercent: coin.price_change_percentage_24h || 0,
+      marketCap: coin.market_cap,
+    }));
+  } catch (err) {
+    console.error('Error fetching top coins:', err.message);
+    throw err;
+  }
 }
 
 // (Optional) simple crypto news using CryptoCompare News API as an example
@@ -81,13 +103,13 @@ bot.on('message', async (msg) => {
 
   try {
     if (text === '📊 Live Prices') {
-      const [btc, eth] = await Promise.all([getPrice('BTCUSDT'), getPrice('ETHUSDT')]);
+      const [btc, eth] = await Promise.all([getPrice('BTC-USD'), getPrice('ETH-USD')]);
       await bot.sendMessage(
         chatId,
         [
           '📊 *Live Prices*',
-          `BTC/USDT: *${parseFloat(btc.price).toFixed(2)}*`,
-          `ETH/USDT: *${parseFloat(eth.price).toFixed(2)}*`,
+          `BTC/USD: *$${parseFloat(btc.price).toFixed(2)}*`,
+          `ETH/USD: *$${parseFloat(eth.price).toFixed(2)}*`,
         ].join('\n'),
         { parse_mode: 'Markdown' }
       );
@@ -95,20 +117,20 @@ bot.on('message', async (msg) => {
       const topCoins = await getTopCoins(10);
       const reply = topCoins
         .map((c, i) =>
-          `${i + 1}. *${c.symbol}*\nPrice: ${parseFloat(c.lastPrice).toFixed(
-            4
+          `${i + 1}. *${c.symbol}* (${c.name})\nPrice: $${parseFloat(c.lastPrice).toFixed(
+            2
           )} | 24h: ${parseFloat(c.priceChangePercent).toFixed(2)}%`
         )
         .join('\n\n');
 
-      await bot.sendMessage(chatId, `🔥 *Top 10 USDT Pairs by Volume*\n\n${reply}`, {
+      await bot.sendMessage(chatId, `🔥 *Top 10 Coins by Market Cap*\n\n${reply}`, {
         parse_mode: 'Markdown',
       });
     } else if (text === '📈 BTC Analysis') {
-      const btc = await getPrice('BTCUSDT');
+      const btc = await getPrice('BTC-USD');
       await bot.sendMessage(
         chatId,
-        `📈 *BTC Analysis*\nBTC/USDT: *${parseFloat(btc.price).toFixed(2)}*`,
+        `📈 *BTC Analysis*\nBTC/USD: *$${parseFloat(btc.price).toFixed(2)}*`,
         { parse_mode: 'Markdown' }
       );
       // Send a BTC image from a public crypto logo CDN
@@ -116,10 +138,10 @@ bot.on('message', async (msg) => {
         caption: '🖼 BTC logo from CoinGecko',
       });
     } else if (text === '📄 ETH Analysis') {
-      const eth = await getPrice('ETHUSDT');
+      const eth = await getPrice('ETH-USD');
       await bot.sendMessage(
         chatId,
-        `📄 *ETH Analysis*\nETH/USDT: *${parseFloat(eth.price).toFixed(2)}*`,
+        `📄 *ETH Analysis*\nETH/USD: *$${parseFloat(eth.price).toFixed(2)}*`,
         { parse_mode: 'Markdown' }
       );
       // Send an ETH image from a public crypto logo CDN
@@ -141,8 +163,8 @@ bot.on('message', async (msg) => {
       const reply = topCoins
         .map(
           (c) =>
-            `*${c.symbol}*  Price: ${parseFloat(c.lastPrice).toFixed(
-              4
+            `*${c.symbol}* (${c.name})  Price: $${parseFloat(c.lastPrice).toFixed(
+              2
             )}  | 24h: ${parseFloat(c.priceChangePercent).toFixed(2)}%`
         )
         .join('\n');
