@@ -1,6 +1,7 @@
 require('dotenv').config();
 const TelegramBot = require('node-telegram-bot-api');
 const axios = require('axios');
+const express = require('express');
 
 const botToken = process.env.TELEGRAM_BOT_TOKEN;
 
@@ -10,6 +11,37 @@ if (!botToken) {
 }
 
 const bot = new TelegramBot(botToken, { polling: true });
+
+// ==================== EXPRESS SERVER ====================
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+app.use(express.json());
+
+// Health check endpoint
+app.get('/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    bot: 'Crypto Tracker Bot v2',
+    features: ['live-prices', 'trending', 'top-10', 'global-data', 'search', 'charts', 'categories'],
+  });
+});
+
+// Status endpoint
+app.get('/status', (req, res) => {
+  res.json({
+    running: true,
+    version: '2.0',
+    uptime: process.uptime(),
+    memory: process.memoryUsage(),
+  });
+});
+
+// Start server
+const server = app.listen(PORT, () => {
+  console.log(`🌐 Web server listening on port ${PORT}`);
+});
 
 // Axios instance with timeout
 const apiClient = axios.create({ timeout: 10000 });
@@ -471,4 +503,5 @@ bot.on('error', (err) => {
 console.log('🤖 Crypto Tracker Bot v2 started!');
 console.log('✅ Features: Live prices, trending, search, charts, global data');
 console.log('✅ Data sources: Coinbase + CoinGecko (No API keys needed)');
+console.log('✅ Web endpoints: /health, /status');
 console.log('🚀 Ready!\n');
